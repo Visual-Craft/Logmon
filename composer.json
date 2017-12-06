@@ -1,0 +1,22 @@
+{
+    "name": "visual-craft/logmon",
+    "description": "Log files monitoring tool",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Anton Bakai",
+            "email": "me@inso.im"
+        }
+    ],
+    "autoload": {
+        "psr-4" : {
+            "VisualCraft\\Logmon\\" : "src"
+        }
+    },
+    "require": {
+        "php": ">=5.5.0",
+        "ulrichsg/getopt-php": "^3.0"
+    },
+    "bin": [ "bin/logmon" ]
+}

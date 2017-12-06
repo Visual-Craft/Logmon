@@ -1,0 +1,9 @@
+Package: logmon
+Version: %VERSION%
+Architecture: all
+Section: admin
+Priority: optional
+Installed-Size: 10
+Depends: php5-cli (>= 5.5.0)
+Maintainer: Anton Bakai [me@inso.im]
+Description: Log files monitoring tool.

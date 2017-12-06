@@ -1,0 +1,3 @@
+# sample cron job
+# Monitors Apache default error log every 30 minutes
+#05,35 * * * *   root   /usr/bin/logmon /var/log/apache/error.log | mail -s "Apache error log report" root

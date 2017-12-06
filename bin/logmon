@@ -1,0 +1,174 @@
+#!/usr/bin/env php
+<?php
+
+call_user_func(function () {
+    foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php', __DIR__ . '/../autoload.php'] as $autoLoaderFile) {
+        if (file_exists($autoLoaderFile)) {
+            require_once $autoLoaderFile;
+            break;
+        }
+    }
+});
+
+function eprintln()
+{
+    fwrite(STDERR, (($args = func_get_args()) ? call_user_func_array('sprintf', $args) : '') . PHP_EOL);
+}
+
+function setupOptions()
+{
+    $defaultOptions = [
+        'statesDir' => getcwd(),
+        'maxLines' => 100,
+    ];
+
+    if (is_readable($defaultOptionsFile = __DIR__ . '/../default-options.php')) {
+        $defaultOptionsOverride = require $defaultOptionsFile;
+
+        if (is_array($defaultOptionsOverride)) {
+            $defaultOptions = array_replace($defaultOptions, $defaultOptionsOverride);
+        }
+    }
+
+    $getOpt = new \GetOpt\GetOpt();
+    $getOpt
+        ->addOptions([
+            \GetOpt\Option::create('e', 'end')
+                ->setDescription('Set input file position to the end')
+            ,
+            \GetOpt\Option::create('r', 'reset')
+                ->setDescription('Resets remembered position for input file, next regular run will start from beginning')
+            ,
+            \GetOpt\Option::create('m', 'max', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
+                ->setDescription('Sets max messages after which parsing stops (default 100)')
+                ->setDefaultValue($defaultOptions['maxLines'])
+            ,
+            \GetOpt\Option::create('d', 'dir', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
+                ->setDescription('Sets directory which is used for storing state files')
+                ->setDefaultValue($defaultOptions['statesDir'])
+            ,
+            \GetOpt\Option::create('f', 'filter', \GetOpt\GetOpt::MULTIPLE_ARGUMENT)
+                ->setDescription('Use line filter (/test/ or !/test/ to select matching or non-matching lines, s/search/replace/ to replace line content)')
+            ,
+            \GetOpt\Option::create('s', 'state', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
+                ->setDescription('Chose state for the input file, used for separate tracking for single input file')
+            ,
+            \GetOpt\Option::create('h', 'help')
+                ->setDescription('Show help')
+            ,
+            \GetOpt\Option::create('v', 'version')
+                ->setDescription('Show version')
+            ,
+        ])
+        ->addOperands([
+            \GetOpt\Operand::create('input_file'),
+            \GetOpt\Operand::create('command'),
+            \GetOpt\Operand::create('command_options', \GetOpt\Operand::MULTIPLE),
+        ])
+    ;
+
+    return $getOpt;
+}
+
+function parseOptions(\GetOpt\GetOpt $getOpt)
+{
+    $getOpt->process();
+
+    if ($getOpt->getOption('h')) {
+        return;
+    }
+
+    if ($getOpt->getOption('version')) {
+        return;
+    }
+
+    if ($getOpt->getOption('end') && $getOpt->getOption('reset')) {
+        throw new \RuntimeException("Options 'end' and 'reset' cannot be used simultaneously");
+    }
+
+    if (!$getOpt->getOperand('input_file')) {
+        throw new RuntimeException("Operand 'input_file' should be provided");
+    }
+
+    if (!is_file($getOpt->getOperand('input_file'))) {
+        throw new RuntimeException(sprintf("Missing input file '%s'", $getOpt->getOperand('input_file')));
+    }
+}
+
+function main()
+{
+    $getOpt = setupOptions();
+
+    try {
+        parseOptions($getOpt);
+    } catch (\Exception $e) {
+        eprintln($e->getMessage());
+        eprintln();
+        eprintln($getOpt->getHelpText());
+
+        return 1;
+    }
+
+    if ($getOpt->getOption('h')) {
+        eprintln($getOpt->getHelpText());
+
+        return 0;
+    }
+
+    if ($getOpt->getOption('version')) {
+        $logmonVersion = '%VERSION%';
+        eprintln('Logmon version %s', strpos($logmonVersion, '%') !== false ? 'dev' : $logmonVersion);
+
+        return 0;
+    }
+
+    $processor = new \VisualCraft\Logmon\Logmon($getOpt->getOperand('input_file'), $getOpt->getOption('dir'));
+
+    if ($getOpt->getOption('end')) {
+        $processor->skip();
+    } elseif ($getOpt->getOption('reset')) {
+        $processor->reset();
+    } else {
+        $processOptions = [];
+
+        if ($getOpt->getOption('m')) {
+            $processOptions['maxLines'] = $getOpt->getOption('m');
+        }
+
+        if ($getOpt->getOption('filter')) {
+            $lineFilterFactory = new \VisualCraft\Logmon\LineFilterFactory();
+            $processor->setFilter($lineFilterFactory->create($getOpt->getOption('filter')));
+        }
+
+        if ($getOpt->getOption('state')) {
+            $processor->setStateId($getOpt->getOption('state'));
+        }
+
+        if ($command = $getOpt->getOperand('command')) {
+            $commandLineParts = [escapeshellcmd($command)];
+            $commandOptions = $getOpt->getOperand('command_options');
+
+            if (is_array($commandOptions)) {
+                foreach ($commandOptions as $commandOption) {
+                    $commandLineParts[] = escapeshellarg($commandOption);
+                }
+            }
+
+            $commandLine = implode(' ', $commandLineParts);
+            $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ProcessStdinWritingLineProcessor($commandLine);
+        } else {
+            $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ResourceWritingLineProcessor(STDOUT);
+        }
+
+        $processor->process($lineProcessor, $processOptions);
+    }
+
+    return 0;
+}
+
+try {
+    exit(main());
+} catch (Exception $e) {
+    eprintln('Error: %s', $e->getMessage());
+    exit(max($e->getCode(), 1));
+}

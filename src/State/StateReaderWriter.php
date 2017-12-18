@@ -46,11 +46,15 @@ class StateReaderWriter
 
         $this->file = $dir . '/' . implode('-', $fileNameParts) . '.state';
         touch($this->file);
-        $this->handle = fopen($this->file, 'rb+');
+        $handle = fopen($this->file, 'rb+');
 
         if (!flock($this->handle, LOCK_EX|LOCK_NB)) {
+            fclose($handle);
+
             throw new \RuntimeException(sprintf("State file '%s' is locked", $this->file));
         }
+
+        $this->handle = $handle;
     }
 
     /**

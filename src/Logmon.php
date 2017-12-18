@@ -53,12 +53,6 @@ class Logmon
      */
     public function process(LineProcessorInterface $lineProcessor, array $options = [])
     {
-        $options = array_replace([
-            'maxLines' => 100,
-            'restart' => false,
-            'restartOnWrongSign' => true,
-        ], $options);
-        $options['maxLines'] = (int) $options['maxLines'];
         $logFileHandle = $this->openFile($this->logFile);
 
         try {
@@ -79,6 +73,13 @@ class Logmon
         $logFileHandle,
         array $options
     ) {
+        $options = array_replace([
+            'maxLines' => 100,
+            'restart' => false,
+            'restartOnWrongSign' => true,
+        ], $options);
+        $options['maxLines'] = (int) $options['maxLines'];
+
         $linesCount = 0;
         $prevState = null;
         $initialOffset = 0;

@@ -30,11 +30,13 @@ class Logmon
     /**
      * @param string $logFile
      * @param string $stateFilesDir
+     * @param string|null $stateId
      */
-    public function __construct($logFile, $stateFilesDir)
+    public function __construct($logFile, $stateFilesDir, $stateId = null)
     {
         $this->logFile = $logFile;
         $this->stateFilesDir = $stateFilesDir;
+        $this->stateId = $stateId;
     }
 
     /**
@@ -43,14 +45,6 @@ class Logmon
     public function setFilter(LineFilterInterface $value)
     {
         $this->filter = $value;
-    }
-
-    /**
-     * @param string|null $value
-     */
-    public function setStateId($value)
-    {
-        $this->stateId = $value;
     }
 
     /**

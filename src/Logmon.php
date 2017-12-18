@@ -53,17 +53,17 @@ class Logmon
      */
     public function process(LineProcessorInterface $lineProcessor, array $options = [])
     {
-        $logFileHandle = $this->openFile($this->logFile);
+        $stateReaderWriter = $this->createStateReaderWriter();
 
         try {
-            $stateReaderWriter = $this->createStateReaderWriter();
+            $logFileHandle = $this->openFile($this->logFile);
             $this->doProcess($lineProcessor, $stateReaderWriter, $logFileHandle, $options);
         } finally {
-            fclose($logFileHandle);
-
-            if (isset($stateReaderWriter)) {
-                $stateReaderWriter->close();
+            if (isset($logFileHandle)) {
+                fclose($logFileHandle);
             }
+
+            $stateReaderWriter->close();
         }
     }
 
@@ -133,8 +133,8 @@ class Logmon
 
     public function skip()
     {
-        $logFileHandle = $this->openFile($this->logFile);
         $stateReaderWriter = $this->createStateReaderWriter();
+        $logFileHandle = $this->openFile($this->logFile);
         fseek($logFileHandle, 0, SEEK_END);
         $state = $this->createStateManager()->create($logFileHandle);
         fclose($logFileHandle);

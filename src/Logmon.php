@@ -7,8 +7,6 @@ use VisualCraft\Logmon\State\StateReaderWriter;
 
 class Logmon
 {
-    const DEFAULT_SIGN_BLOCK_SIZE = 256;
-
     /**
      * @var string
      */
@@ -90,9 +88,10 @@ class Logmon
         $linesCount = 0;
         $prevState = null;
         $initialOffset = 0;
+        $stateManager = $this->createStateManager();
 
         if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
-            if ($this->checkSign($logFileHandle, $prevState)) {
+            if ($stateManager->isValid($logFileHandle, $prevState)) {
                 $initialOffset = $prevState->offset;
             } elseif (!$options['restartOnWrongSign']) {
                 throw new \RuntimeException('invalid log file sign');
@@ -131,7 +130,7 @@ class Logmon
             $lineProcessor->stop();
         }
 
-        $state = $this->createState($logFileHandle, $prevState);
+        $state = $stateManager->create($logFileHandle, $prevState);
         $stateReaderWriter->write($state);
     }
 
@@ -140,7 +139,7 @@ class Logmon
         $logFileHandle = $this->openLogFile();
         $stateReaderWriter = $this->createStateReaderWriter();
         fseek($logFileHandle, 0, SEEK_END);
-        $state = $this->createState($logFileHandle);
+        $state = $this->createStateManager()->create($logFileHandle);
         fclose($logFileHandle);
         $stateReaderWriter->write($state);
         $stateReaderWriter->close();
@@ -173,80 +172,10 @@ class Logmon
     }
 
     /**
-     * @param resource $handle
-     * @param State|null $prevState
-     * @return State
+     * @return StateManager
      */
-    private function createState($handle, State $prevState = null)
+    private function createStateManager()
     {
-        $state = new State();
-        $state->offset = ftell($handle);
-
-        $state->startSignOffset1 = 0;
-        $state->startSignOffset2 = min(self::DEFAULT_SIGN_BLOCK_SIZE, $state->offset);
-
-        if (
-            $prevState !== null
-                &&
-            $state->startSignOffset1 === $prevState->startSignOffset1
-                &&
-            $state->startSignOffset2 === $prevState->startSignOffset2
-        ) {
-            $state->startSign = $prevState->startSign;
-        } else {
-            $state->startSign = $this->calculateSign(
-                $handle,
-                $state->startSignOffset1,
-                $state->startSignOffset2
-            );
-        }
-
-        $state->endSignOffset1 = max(
-            $state->startSignOffset2,
-            $state->offset - self::DEFAULT_SIGN_BLOCK_SIZE
-        );
-        $state->endSignOffset2 = $state->offset;
-        $state->endSign = $this->calculateSign(
-            $handle,
-            $state->endSignOffset1,
-            $state->endSignOffset2
-        );
-
-        return $state;
-    }
-
-    /**
-     * @param resource $handle
-     * @param int $offset1
-     * @param int $offset2
-     * @return string
-     */
-    private function calculateSign($handle, $offset1, $offset2)
-    {
-        if ($offset1 >= $offset2) {
-            return '';
-        }
-
-        fseek($handle, $offset1);
-        $content = fread($handle, $offset2 - $offset1);
-
-        if ($content === '') {
-            return '';
-        }
-
-        return hash('sha1', $content);
-    }
-
-    /**
-     * @param resource $handle
-     * @param State $state
-     * @return bool
-     */
-    private function checkSign($handle, State $state)
-    {
-        $realStartSign = $this->calculateSign($handle, $state->startSignOffset1, $state->startSignOffset2);
-        $realEndSign = $this->calculateSign($handle, $state->endSignOffset1, $state->endSignOffset2);
-
-        return ($realStartSign === $state->startSign) && ($realEndSign === $state->endSign);
+        return new StateManager('sha1');
     }
 }

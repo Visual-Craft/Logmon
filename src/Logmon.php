@@ -2,6 +2,9 @@
 
 namespace VisualCraft\Logmon;
 
+use VisualCraft\Logmon\State\StateManager;
+use VisualCraft\Logmon\State\StateReaderWriter;
+
 class Logmon
 {
     const DEFAULT_SIGN_BLOCK_SIZE = 256;

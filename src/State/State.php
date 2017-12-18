@@ -1,6 +1,6 @@
 <?php
 
-namespace VisualCraft\Logmon;
+namespace VisualCraft\Logmon\State;
 
 class State implements \Serializable
 {

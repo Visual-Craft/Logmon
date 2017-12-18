@@ -59,7 +59,7 @@ class Logmon
             'restartOnWrongSign' => true,
         ], $options);
         $options['maxLines'] = (int) $options['maxLines'];
-        $logFileHandle = $this->openLogFile();
+        $logFileHandle = $this->openFile($this->logFile);
 
         try {
             $stateReaderWriter = $this->createStateReaderWriter();
@@ -132,7 +132,7 @@ class Logmon
 
     public function skip()
     {
-        $logFileHandle = $this->openLogFile();
+        $logFileHandle = $this->openFile($this->logFile);
         $stateReaderWriter = $this->createStateReaderWriter();
         fseek($logFileHandle, 0, SEEK_END);
         $state = $this->createStateManager()->create($logFileHandle);
@@ -148,12 +148,13 @@ class Logmon
     }
 
     /**
+     * @param string $file
      * @return resource
      */
-    private function openLogFile()
+    private function openFile($file)
     {
-        if (!($handle = fopen($this->logFile, 'rb'))) {
-            throw new \RuntimeException("can't open log file '{$this->logFile}'");
+        if (!($handle = fopen($file, 'rb'))) {
+            throw new \RuntimeException("can't open file '{$file}'");
         }
 
         return $handle;

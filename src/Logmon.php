@@ -89,6 +89,8 @@ class Logmon
                 $initialOffset = $prevState->offset;
             } elseif (!$options['restartOnWrongSign']) {
                 throw new \RuntimeException('invalid log file sign');
+            } else {
+                $prevState = null;
             }
         }
 

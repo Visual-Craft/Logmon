@@ -28,6 +28,11 @@ class Logmon
     private $stateId;
 
     /**
+     * @var resource[]
+     */
+    private $handles;
+
+    /**
      * @param string $logFile
      * @param string $stateFilesDir
      * @param string|null $stateId
@@ -37,6 +42,7 @@ class Logmon
         $this->logFile = $logFile;
         $this->stateFilesDir = $stateFilesDir;
         $this->stateId = $stateId;
+        $this->handles = [];
     }
 
     /**
@@ -53,96 +59,79 @@ class Logmon
      */
     public function process(LineProcessorInterface $lineProcessor, array $options = [])
     {
-        $stateReaderWriter = $this->createStateReaderWriter();
+        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) use ($lineProcessor, $options) {
+            $options = array_replace([
+                'maxLines' => 100,
+                'restart' => false,
+                'restartOnWrongSign' => true,
+            ], $options);
+            $options['maxLines'] = (int) $options['maxLines'];
 
-        try {
+            $linesCount = 0;
+            $initialOffset = 0;
+            $stateManager = $this->createStateManager();
             $logFileHandle = $this->openFile($this->logFile);
-            $this->doProcess($lineProcessor, $stateReaderWriter, $logFileHandle, $options);
-        } finally {
-            if (isset($logFileHandle)) {
-                fclose($logFileHandle);
+
+            if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
+                if ($stateManager->isValid($logFileHandle, $prevState)) {
+                    $initialOffset = $prevState->offset;
+                } elseif (!$options['restartOnWrongSign']) {
+                    throw new \RuntimeException('invalid log file sign');
+                }
             }
 
-            $stateReaderWriter->close();
-        }
-    }
+            fseek($logFileHandle, $initialOffset);
+            $lineProcessorStarted = false;
 
-    private function doProcess(
-        LineProcessorInterface $lineProcessor,
-        StateReaderWriter $stateReaderWriter,
-        $logFileHandle,
-        array $options
-    ) {
-        $options = array_replace([
-            'maxLines' => 100,
-            'restart' => false,
-            'restartOnWrongSign' => true,
-        ], $options);
-        $options['maxLines'] = (int) $options['maxLines'];
+            while ($line = fgets($logFileHandle)) {
+                if ($this->filter) {
+                    $filteredLine = $this->filter->filter($line);
 
-        $linesCount = 0;
-        $initialOffset = 0;
-        $stateManager = $this->createStateManager();
+                    if ($filteredLine === null || $filteredLine === '') {
+                        continue;
+                    }
 
-        if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
-            if ($stateManager->isValid($logFileHandle, $prevState)) {
-                $initialOffset = $prevState->offset;
-            } elseif (!$options['restartOnWrongSign']) {
-                throw new \RuntimeException('invalid log file sign');
-            }
-        }
-
-        fseek($logFileHandle, $initialOffset);
-        $lineProcessorStarted = false;
-
-        while ($line = fgets($logFileHandle)) {
-            if ($this->filter) {
-                $filteredLine = $this->filter->filter($line);
-
-                if ($filteredLine === null || $filteredLine === '') {
-                    continue;
+                    $line = $filteredLine;
                 }
 
-                $line = $filteredLine;
+                $linesCount++;
+
+                if (!$lineProcessorStarted) {
+                    $lineProcessor->start();
+                    $lineProcessorStarted = true;
+                }
+
+                $lineProcessor->process($line);
+
+                if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
+                    break;
+                }
             }
 
-            $linesCount++;
-
-            if (!$lineProcessorStarted) {
-                $lineProcessor->start();
-                $lineProcessorStarted = true;
+            if ($lineProcessorStarted) {
+                $lineProcessor->stop();
             }
 
-            $lineProcessor->process($line);
-
-            if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
-                break;
-            }
-        }
-
-        if ($lineProcessorStarted) {
-            $lineProcessor->stop();
-        }
-
-        $state = $stateManager->create($logFileHandle);
-        $stateReaderWriter->write($state);
+            $state = $stateManager->create($logFileHandle);
+            $stateReaderWriter->write($state);
+        });
     }
 
     public function skip()
     {
-        $stateReaderWriter = $this->createStateReaderWriter();
-        $logFileHandle = $this->openFile($this->logFile);
-        fseek($logFileHandle, 0, SEEK_END);
-        $state = $this->createStateManager()->create($logFileHandle);
-        fclose($logFileHandle);
-        $stateReaderWriter->write($state);
-        $stateReaderWriter->close();
+        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) {
+            $logFileHandle = $this->openFile($this->logFile);
+            fseek($logFileHandle, 0, SEEK_END);
+            $state = $this->createStateManager()->create($logFileHandle);
+            $stateReaderWriter->write($state);
+        });
     }
 
     public function reset()
     {
-        $stateReaderWriter = $this->createStateReaderWriter();
-        $stateReaderWriter->remove();
+        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) {
+            $stateReaderWriter->remove();
+        });
     }
 
     /**
@@ -155,7 +144,20 @@ class Logmon
             throw new \RuntimeException("can't open file '{$file}'");
         }
 
+        $this->handles[] = $handle;
+
         return $handle;
+    }
+
+    private function closeHandles()
+    {
+        foreach ($this->handles as $handle) {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+        }
+
+        $this->handles = [];
     }
 
     /**
@@ -172,5 +174,20 @@ class Logmon
     private function createStateManager()
     {
         return new StateManager('sha1');
+    }
+
+    /**
+     * @param callable $callable
+     */
+    private function openStateAndRun(callable $callable)
+    {
+        $stateReaderWriter = $this->createStateReaderWriter();
+
+        try {
+            $callable($stateReaderWriter);
+        } finally {
+            $this->closeHandles();
+            $stateReaderWriter->close();
+        }
     }
 }

@@ -21,32 +21,20 @@ class StateManager
 
     /**
      * @param resource $handle
-     * @param State|null $prevState
      * @return State
      */
-    public function create($handle, State $prevState = null)
+    public function create($handle)
     {
         $state = new State();
         $state->offset = ftell($handle);
 
         $state->startSignOffset1 = 0;
         $state->startSignOffset2 = min(self::DEFAULT_SIGN_BLOCK_SIZE, $state->offset);
-
-        if (
-            $prevState !== null
-                &&
-            $state->startSignOffset1 === $prevState->startSignOffset1
-                &&
-            $state->startSignOffset2 === $prevState->startSignOffset2
-        ) {
-            $state->startSign = $prevState->startSign;
-        } else {
-            $state->startSign = $this->calculateSign(
-                $handle,
-                $state->startSignOffset1,
-                $state->startSignOffset2
-            );
-        }
+        $state->startSign = $this->calculateSign(
+            $handle,
+            $state->startSignOffset1,
+            $state->startSignOffset2
+        );
 
         $state->endSignOffset1 = max(
             $state->startSignOffset2,

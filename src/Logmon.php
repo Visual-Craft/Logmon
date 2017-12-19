@@ -81,7 +81,6 @@ class Logmon
         $options['maxLines'] = (int) $options['maxLines'];
 
         $linesCount = 0;
-        $prevState = null;
         $initialOffset = 0;
         $stateManager = $this->createStateManager();
 
@@ -90,8 +89,6 @@ class Logmon
                 $initialOffset = $prevState->offset;
             } elseif (!$options['restartOnWrongSign']) {
                 throw new \RuntimeException('invalid log file sign');
-            } else {
-                $prevState = null;
             }
         }
 
@@ -127,7 +124,7 @@ class Logmon
             $lineProcessor->stop();
         }
 
-        $state = $stateManager->create($logFileHandle, $prevState);
+        $state = $stateManager->create($logFileHandle);
         $stateReaderWriter->write($state);
     }
 

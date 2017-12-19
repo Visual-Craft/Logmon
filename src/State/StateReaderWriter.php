@@ -48,7 +48,7 @@ class StateReaderWriter
         touch($this->file);
         $handle = fopen($this->file, 'rb+');
 
-        if (!flock($this->handle, LOCK_EX|LOCK_NB)) {
+        if (!flock($handle, LOCK_EX|LOCK_NB)) {
             fclose($handle);
 
             throw new \RuntimeException(sprintf("State file '%s' is locked", $this->file));

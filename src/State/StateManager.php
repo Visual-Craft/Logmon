@@ -4,19 +4,28 @@ namespace VisualCraft\Logmon\State;
 
 class StateManager
 {
-    const DEFAULT_SIGN_BLOCK_SIZE = 256;
-
     /**
      * @var string
      */
     private $hashAlgo;
 
     /**
-     * @param string $hashAlgo
+     * @var int
      */
-    public function __construct($hashAlgo)
+    private $signBlockSize;
+
+    /**
+     * @param string $hashAlgo
+     * @param int $signBlockSize
+     */
+    public function __construct($hashAlgo, $signBlockSize = 256)
     {
+        if ($signBlockSize < 1) {
+            throw new \InvalidArgumentException("Argument 'signBlockSize' should be greater than 0");
+        }
+
         $this->hashAlgo = $hashAlgo;
+        $this->signBlockSize = $signBlockSize;
     }
 
     /**
@@ -29,7 +38,7 @@ class StateManager
         $state->offset = ftell($handle);
 
         $state->startSignOffset1 = 0;
-        $state->startSignOffset2 = min(self::DEFAULT_SIGN_BLOCK_SIZE, $state->offset);
+        $state->startSignOffset2 = min($this->signBlockSize, $state->offset);
         $state->startSign = $this->calculateSign(
             $handle,
             $state->startSignOffset1,
@@ -38,7 +47,7 @@ class StateManager
 
         $state->endSignOffset1 = max(
             $state->startSignOffset2,
-            $state->offset - self::DEFAULT_SIGN_BLOCK_SIZE
+            $state->offset - $this->signBlockSize
         );
         $state->endSignOffset2 = $state->offset;
         $state->endSign = $this->calculateSign(

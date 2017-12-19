@@ -53,6 +53,9 @@ function setupOptions()
             \GetOpt\Option::create('s', 'state', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
                 ->setDescription('Chose state for the input file, used for separate tracking for single input file')
             ,
+            \GetOpt\Option::create('c', 'command', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
+                ->setDescription('Path to external command which will be run, lines will be fed to it via stdin')
+            ,
             \GetOpt\Option::create('h', 'help')
                 ->setDescription('Show help')
             ,
@@ -62,8 +65,6 @@ function setupOptions()
         ])
         ->addOperands([
             \GetOpt\Operand::create('input_file'),
-            \GetOpt\Operand::create('command'),
-            \GetOpt\Operand::create('command_options', \GetOpt\Operand::MULTIPLE),
         ])
     ;
 
@@ -144,18 +145,8 @@ function main()
             $processor->setFilter($lineFilterFactory->create($getOpt->getOption('filter')));
         }
 
-        if ($command = $getOpt->getOperand('command')) {
-            $commandLineParts = [escapeshellcmd($command)];
-            $commandOptions = $getOpt->getOperand('command_options');
-
-            if (is_array($commandOptions)) {
-                foreach ($commandOptions as $commandOption) {
-                    $commandLineParts[] = escapeshellarg($commandOption);
-                }
-            }
-
-            $commandLine = implode(' ', $commandLineParts);
-            $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ProcessStdinWritingLineProcessor($commandLine);
+        if ($command = $getOpt->getOption('command')) {
+            $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ProcessStdinWritingLineProcessor($command);
         } else {
             $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ResourceWritingLineProcessor(STDOUT);
         }

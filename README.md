@@ -17,14 +17,15 @@ and outputs them to stdout, remembering last position.
 
 #### Regular, running external program
 
-    $ bin/logmon /path/to/file /path/to/program
+    $ bin/logmon /path/to/file -c /path/to/program
+    $ bin/logmon /path/to/file --command /path/to/program
 
 Instead of outputting lines to stdout Logmon will start `/path/to/program`
 and will write lines to program stdin.
-- Options and arguments for program can be passed after `--` argument:
+- Options and arguments for program can be passed as shown below:
 
 
-    $ bin/logmon /path/to/file /path/to/program -- -a --opt
+    $ bin/logmon /path/to/file -c "/path/to/program -a --opt"
 
 - If there are no new lines, program will not be started
 

@@ -39,7 +39,13 @@ class Logmon
      */
     public function __construct($logFile, $stateFilesDir, $stateId = null)
     {
-        $this->logFile = $logFile;
+        $logFileRealPath = realpath($logFile);
+
+        if ($logFileRealPath === false) {
+            throw new \InvalidArgumentException("Argument 'logFile' should be the path to existing file");
+        }
+
+        $this->logFile = $logFileRealPath;
         $this->stateFilesDir = $stateFilesDir;
         $this->stateId = $stateId;
         $this->handles = [];

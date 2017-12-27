@@ -179,7 +179,7 @@ class Logmon
      */
     private function createStateManager()
     {
-        return new StateManager('sha1');
+        return new StateManager('sha256');
     }
 
     /**

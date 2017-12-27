@@ -36,7 +36,7 @@ class StateReaderWriter
         }
 
         $fileNameParts = [
-            hash('sha1', dirname($logFile)),
+            hash('sha256', dirname($logFile)),
             basename($logFile),
         ];
 

@@ -21,7 +21,7 @@ class StateReaderWriter
      * @param string $dir
      * @param string|null $stateId
      */
-    public function __construct($logFile, $dir, $stateId)
+    public function __construct($logFile, $dir, $stateId = null)
     {
         if (!is_dir($dir) && !@mkdir($dir) && !is_dir($dir)) {
             throw new \RuntimeException(sprintf("Unable to create '%s' directory.", $dir));
@@ -31,19 +31,19 @@ class StateReaderWriter
             throw new \RuntimeException(sprintf("'%s' is not writable.", $dir));
         }
 
-        if ($stateId !== null && !preg_match('/^[\w\-]+$/', $stateId)) {
-            throw new \InvalidArgumentException("State id should contain only letters, digits, '_' and '-'.");
+        if ($stateId === null) {
+            $stateId = 'default';
         }
 
         $fileNameParts = [
-            hash('sha256', dirname($logFile)),
-            basename($logFile),
+            substr(hash('sha256', dirname($logFile)), 0, 8),
+            substr(hash('sha256', basename($logFile)), 0, 8),
+            substr(hash('sha256', $stateId), 0, 8),
+            hash('sha256', implode("\n", [
+                $logFile,
+                $stateId,
+            ])),
         ];
-
-        if ($stateId !== null) {
-            $fileNameParts[] = $stateId;
-        }
-
         $this->file = $dir . '/' . implode('-', $fileNameParts) . '.state';
         touch($this->file);
         $handle = fopen($this->file, 'rb+');

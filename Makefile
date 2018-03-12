@@ -1,29 +1,20 @@
-REF ?= current
-REF_VALUE := $(REF)
+APP_NAME := logmon
+ROOT_DIR := $(realpath $(dir $(realpath $(MAKEFILE_LIST))))
 
-ifeq '$(REF_VALUE)' 'current'
-	NUMERIC_VERSION := 0.0.0
-	TEXT_VERSION := dev
+VERSION := $(shell git describe --tags 2>/dev/null | sed s/^v//)
+ifeq ($(VERSION),)
+VERSION := unknown
+DEB_VERSION := 0.0.0
 else
-	REF_IS_VERSION := $(shell echo $(REF_VALUE) | grep -q 'v\?[0-9]\+\.[0-9]\+\.[0-9]\+$$' && echo 'y')
-
-	ifeq '$(REF_IS_VERSION)' 'y'
-		NUMERIC_VERSION := $(shell echo $(REF_VALUE) | sed 's/^v//')
-		TEXT_VERSION := $(NUMERIC_VERSION)
-		REF_VALUE := v$(NUMERIC_VERSION)
-	else
-		NUMERIC_VERSION := 0.0.0
-		TEXT_VERSION := dev
-	endif
+DEB_VERSION := $(VERSION)
 endif
 
-ROOT_DIR := $(realpath $(dir $(realpath $(MAKEFILE_LIST))))
-BUILD_DIR := $(ROOT_DIR)/build
+BUILD_DIR := $(ROOT_DIR)/.build
 PHAR_BUILD_DIR := $(BUILD_DIR)/phar
 DEB_BUILD_DIR := $(BUILD_DIR)/deb
 DIST_DIR := $(ROOT_DIR)/dist
-PHAR := $(DIST_DIR)/logmon_$(REF_VALUE).phar
-DEB := $(DIST_DIR)/logmon_$(REF_VALUE).deb
+PHAR := $(DIST_DIR)/logmon-$(VERSION).phar
+DEB := $(DIST_DIR)/logmon-$(VERSION).deb
 DEB_CONTROL_TEMPLATE := $(ROOT_DIR)/support/deb/control-template
 CRON_TEMPLATE := $(ROOT_DIR)/support/deb/cron-template
 DEFAULT_OPTIONS_TEMPLATE := $(ROOT_DIR)/support/default-options-template.php
@@ -45,30 +36,22 @@ clean:
 	@echo "== Cleaning up build and dist directories"
 	rm -rf $(DIST_DIR) $(BUILD_DIR)
 
-$(PHAR): $(SOURCES) $(DEFAULT_OPTIONS_TEMPLATE) $(ROOT_DIR)/composer.json $(ROOT_DIR)/composer.lock
+$(PHAR): $(SOURCES) $(DEFAULT_OPTIONS_TEMPLATE) $(ROOT_DIR)/composer.json $(ROOT_DIR)/composer.lock | $(DIST_DIR)
 	@echo "== Removing previous build directory"
-	[ ! -e $(PHAR_BUILD_DIR) ] || rm -rf $(PHAR_BUILD_DIR)
+	test ! -e $(PHAR_BUILD_DIR) || rm -rf $(PHAR_BUILD_DIR)
 	@echo
 
 	@echo "== Creating base directories"
-	mkdir -p \
-		$(PHAR_BUILD_DIR) \
-		$(DIST_DIR)
+	mkdir -p $(PHAR_BUILD_DIR)
 	@echo
 
 	@echo "== Setting up sources"
-ifeq '$(REF_VALUE)' 'current'
 	cp -r \
 		$(ROOT_DIR)/bin \
 		$(ROOT_DIR)/src \
 		$(ROOT_DIR)/composer.json \
 		$(ROOT_DIR)/composer.lock \
 		$(PHAR_BUILD_DIR)
-else
-	cp -r $(ROOT_DIR)/.git $(PHAR_BUILD_DIR)/
-	cd $(PHAR_BUILD_DIR) && git checkout -f $(REF_VALUE)
-	rm -rf $(PHAR_BUILD_DIR)/.git
-endif
 	@echo
 
 	@echo "== Installing vendors"
@@ -80,7 +63,7 @@ endif
 	@echo
 
 	@echo "== Setting up version info"
-	sed -i -e "s/%VERSION%/$(TEXT_VERSION)/" $(PHAR_BUILD_DIR)/bin/logmon
+	sed -i -e "s/%VERSION%/$(VERSION)/" $(PHAR_BUILD_DIR)/bin/logmon
 	@echo
 
 	@echo "== Cleaning up sources"
@@ -117,27 +100,20 @@ endif
 	rm -rf $(PHAR_BUILD_DIR)
 	@echo
 
-$(DEB): $(PHAR) $(DEB_CONTROL_TEMPLATE) $(CRON_TEMPLATE)
+$(DEB): $(PHAR) $(DEB_CONTROL_TEMPLATE) $(CRON_TEMPLATE) | $(DIST_DIR)
 	@echo "== Removing previous build directory"
-	[ ! -e $(DEB_BUILD_DIR) ] || rm -rf $(DEB_BUILD_DIR)
+	test ! -e $(DEB_BUILD_DIR) || rm -rf $(DEB_BUILD_DIR)
 	@echo
 
 	@echo "== Creating directory structure"
 	mkdir -p \
 		$(DEB_BUILD_DIR) \
-		$(DIST_DIR) \
 		$(DEB_BUILD_DIR)/DEBIAN \
 		$(DEB_BUILD_DIR)/var/lib/logmon \
 		$(DEB_BUILD_DIR)/usr/bin \
 		$(DEB_BUILD_DIR)/usr/share/logmon
 
 	chmod 0700 $(DEB_BUILD_DIR)/var/lib/logmon
-	@echo
-
-	@echo "== Creating deb control file"
-	cat $(DEB_CONTROL_TEMPLATE) | \
-		sed "s/%VERSION%/$(NUMERIC_VERSION)/g" \
-		> $(DEB_BUILD_DIR)/DEBIAN/control
 	@echo
 
 	@echo "== Adding application phar file"
@@ -150,6 +126,14 @@ $(DEB): $(PHAR) $(DEB_CONTROL_TEMPLATE) $(CRON_TEMPLATE)
 	cp $(ROOT_DIR)/README.md $(DEB_BUILD_DIR)/usr/share/logmon/README.md
 	@echo
 
+	@echo "== Creating deb control file"
+	cat $(DEB_CONTROL_TEMPLATE) | \
+		sed \
+			-e "s/%VERSION%/$(DEB_VERSION)/g" \
+			-e "s/%SIZE%/`du -s $(DEB_BUILD_DIR) | sed 's/^\([0-9]\+\).*$$/\1/'`/g" \
+		> $(DEB_BUILD_DIR)/DEBIAN/control
+	@echo
+
 	@echo "== Building deb file"
 	fakeroot dpkg -b $(DEB_BUILD_DIR) $(DEB)
 	@echo
@@ -157,3 +141,6 @@ $(DEB): $(PHAR) $(DEB_CONTROL_TEMPLATE) $(CRON_TEMPLATE)
 	@echo "== Removing build directory"
 	rm -rf $(DEB_BUILD_DIR)
 	@echo
+
+$(DIST_DIR):
+	test -e $@ || mkdir -p $@

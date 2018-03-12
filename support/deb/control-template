@@ -3,7 +3,7 @@ Version: %VERSION%
 Architecture: all
 Section: admin
 Priority: optional
-Installed-Size: 10
+Installed-Size: %SIZE%
 Depends: php5-cli (>= 5.5.0) | php-cli
 Maintainer: Anton Bakai [me@inso.im]
 Description: Log files monitoring tool.

@@ -122,7 +122,11 @@ function main()
         return 0;
     }
 
-    $processor = new \VisualCraft\Logmon\Logmon($getOpt->getOperand('input_file'), $getOpt->getOption('dir'));
+    $processor = new \VisualCraft\Logmon\Logmon(
+        $getOpt->getOperand('input_file'),
+        $getOpt->getOption('dir'),
+        $getOpt->getOption('state')
+    );
 
     if ($getOpt->getOption('end')) {
         $processor->skip();
@@ -138,10 +142,6 @@ function main()
         if ($getOpt->getOption('filter')) {
             $lineFilterFactory = new \VisualCraft\Logmon\LineFilterFactory();
             $processor->setFilter($lineFilterFactory->create($getOpt->getOption('filter')));
-        }
-
-        if ($getOpt->getOption('state')) {
-            $processor->setStateId($getOpt->getOption('state'));
         }
 
         if ($command = $getOpt->getOperand('command')) {

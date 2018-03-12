@@ -2,10 +2,11 @@
 
 namespace VisualCraft\Logmon;
 
+use VisualCraft\Logmon\State\StateManager;
+use VisualCraft\Logmon\State\StateReaderWriter;
+
 class Logmon
 {
-    const DEFAULT_SIGN_BLOCK_SIZE = 256;
-
     /**
      * @var string
      */
@@ -27,13 +28,21 @@ class Logmon
     private $stateId;
 
     /**
+     * @var resource[]
+     */
+    private $handles;
+
+    /**
      * @param string $logFile
      * @param string $stateFilesDir
+     * @param string|null $stateId
      */
-    public function __construct($logFile, $stateFilesDir)
+    public function __construct($logFile, $stateFilesDir, $stateId = null)
     {
         $this->logFile = $logFile;
         $this->stateFilesDir = $stateFilesDir;
+        $this->stateId = $stateId;
+        $this->handles = [];
     }
 
     /**
@@ -45,120 +54,110 @@ class Logmon
     }
 
     /**
-     * @param string|null $value
-     */
-    public function setStateId($value)
-    {
-        $this->stateId = $value;
-    }
-
-    /**
      * @param LineProcessorInterface $lineProcessor
      * @param array $options
      */
     public function process(LineProcessorInterface $lineProcessor, array $options = [])
     {
-        $options = array_replace([
-            'maxLines' => 100,
-            'restart' => false,
-            'restartOnWrongSign' => true,
-        ], $options);
-        $options['maxLines'] = (int) $options['maxLines'];
-        $logFileHandle = $this->openLogFile();
+        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) use ($lineProcessor, $options) {
+            $options = array_replace([
+                'maxLines' => 100,
+                'restart' => false,
+                'restartOnWrongSign' => true,
+            ], $options);
+            $options['maxLines'] = (int) $options['maxLines'];
 
-        try {
-            $stateReaderWriter = $this->createStateReaderWriter();
-            $this->doProcess($lineProcessor, $stateReaderWriter, $logFileHandle, $options);
-        } finally {
-            fclose($logFileHandle);
+            $linesCount = 0;
+            $initialOffset = 0;
+            $stateManager = $this->createStateManager();
+            $logFileHandle = $this->openFile($this->logFile);
 
-            if (isset($stateReaderWriter)) {
-                $stateReaderWriter->close();
+            if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
+                if ($stateManager->isValid($logFileHandle, $prevState)) {
+                    $initialOffset = $prevState->offset;
+                } elseif (!$options['restartOnWrongSign']) {
+                    throw new \RuntimeException('invalid log file sign');
+                }
             }
-        }
-    }
 
-    private function doProcess(
-        LineProcessorInterface $lineProcessor,
-        StateReaderWriter $stateReaderWriter,
-        $logFileHandle,
-        array $options
-    ) {
-        $linesCount = 0;
-        $prevState = null;
-        $initialOffset = 0;
+            fseek($logFileHandle, $initialOffset);
+            $lineProcessorStarted = false;
 
-        if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
-            if ($this->checkSign($logFileHandle, $prevState)) {
-                $initialOffset = $prevState->offset;
-            } elseif (!$options['restartOnWrongSign']) {
-                throw new \RuntimeException('invalid log file sign');
-            }
-        }
+            while ($line = fgets($logFileHandle)) {
+                if ($this->filter) {
+                    $filteredLine = $this->filter->filter($line);
 
-        fseek($logFileHandle, $initialOffset);
-        $lineProcessorStarted = false;
+                    if ($filteredLine === null || $filteredLine === '') {
+                        continue;
+                    }
 
-        while ($line = fgets($logFileHandle)) {
-            if ($this->filter) {
-                $filteredLine = $this->filter->filter($line);
-
-                if ($filteredLine === null || $filteredLine === '') {
-                    continue;
+                    $line = $filteredLine;
                 }
 
-                $line = $filteredLine;
+                $linesCount++;
+
+                if (!$lineProcessorStarted) {
+                    $lineProcessor->start();
+                    $lineProcessorStarted = true;
+                }
+
+                $lineProcessor->process($line);
+
+                if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
+                    break;
+                }
             }
 
-            $linesCount++;
-
-            if (!$lineProcessorStarted) {
-                $lineProcessor->start();
-                $lineProcessorStarted = true;
+            if ($lineProcessorStarted) {
+                $lineProcessor->stop();
             }
 
-            $lineProcessor->process($line);
-
-            if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
-                break;
-            }
-        }
-
-        if ($lineProcessorStarted) {
-            $lineProcessor->stop();
-        }
-
-        $state = $this->createState($logFileHandle, $prevState);
-        $stateReaderWriter->write($state);
+            $state = $stateManager->create($logFileHandle);
+            $stateReaderWriter->write($state);
+        });
     }
 
     public function skip()
     {
-        $logFileHandle = $this->openLogFile();
-        $stateReaderWriter = $this->createStateReaderWriter();
-        fseek($logFileHandle, 0, SEEK_END);
-        $state = $this->createState($logFileHandle);
-        fclose($logFileHandle);
-        $stateReaderWriter->write($state);
-        $stateReaderWriter->close();
+        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) {
+            $logFileHandle = $this->openFile($this->logFile);
+            fseek($logFileHandle, 0, SEEK_END);
+            $state = $this->createStateManager()->create($logFileHandle);
+            $stateReaderWriter->write($state);
+        });
     }
 
     public function reset()
     {
-        $stateReaderWriter = $this->createStateReaderWriter();
-        $stateReaderWriter->remove();
+        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) {
+            $stateReaderWriter->remove();
+        });
     }
 
     /**
+     * @param string $file
      * @return resource
      */
-    private function openLogFile()
+    private function openFile($file)
     {
-        if (!($handle = fopen($this->logFile, 'rb'))) {
-            throw new \RuntimeException("can't open log file '{$this->logFile}'");
+        if (!($handle = fopen($file, 'rb'))) {
+            throw new \RuntimeException("can't open file '{$file}'");
         }
 
+        $this->handles[] = $handle;
+
         return $handle;
+    }
+
+    private function closeHandles()
+    {
+        foreach ($this->handles as $handle) {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+        }
+
+        $this->handles = [];
     }
 
     /**
@@ -170,80 +169,25 @@ class Logmon
     }
 
     /**
-     * @param resource $handle
-     * @param State|null $prevState
-     * @return State
+     * @return StateManager
      */
-    private function createState($handle, State $prevState = null)
+    private function createStateManager()
     {
-        $state = new State();
-        $state->offset = ftell($handle);
-
-        $state->startSignOffset1 = 0;
-        $state->startSignOffset2 = min(self::DEFAULT_SIGN_BLOCK_SIZE, $state->offset);
-
-        if (
-            $prevState !== null
-                &&
-            $state->startSignOffset1 === $prevState->startSignOffset1
-                &&
-            $state->startSignOffset2 === $prevState->startSignOffset2
-        ) {
-            $state->startSign = $prevState->startSign;
-        } else {
-            $state->startSign = $this->calculateSign(
-                $handle,
-                $state->startSignOffset1,
-                $state->startSignOffset2
-            );
-        }
-
-        $state->endSignOffset1 = max(
-            $state->startSignOffset2,
-            $state->offset - self::DEFAULT_SIGN_BLOCK_SIZE
-        );
-        $state->endSignOffset2 = $state->offset;
-        $state->endSign = $this->calculateSign(
-            $handle,
-            $state->endSignOffset1,
-            $state->endSignOffset2
-        );
-
-        return $state;
+        return new StateManager('sha1');
     }
 
     /**
-     * @param resource $handle
-     * @param int $offset1
-     * @param int $offset2
-     * @return string
+     * @param callable $callable
      */
-    private function calculateSign($handle, $offset1, $offset2)
+    private function openStateAndRun(callable $callable)
     {
-        if ($offset1 >= $offset2) {
-            return '';
+        $stateReaderWriter = $this->createStateReaderWriter();
+
+        try {
+            $callable($stateReaderWriter);
+        } finally {
+            $this->closeHandles();
+            $stateReaderWriter->close();
         }
-
-        fseek($handle, $offset1);
-        $content = fread($handle, $offset2 - $offset1);
-
-        if ($content === '') {
-            return '';
-        }
-
-        return hash('sha1', $content);
-    }
-
-    /**
-     * @param resource $handle
-     * @param State $state
-     * @return bool
-     */
-    private function checkSign($handle, State $state)
-    {
-        $realStartSign = $this->calculateSign($handle, $state->startSignOffset1, $state->startSignOffset2);
-        $realEndSign = $this->calculateSign($handle, $state->endSignOffset1, $state->endSignOffset2);
-
-        return ($realStartSign === $state->startSign) && ($realEndSign === $state->endSign);
     }
 }

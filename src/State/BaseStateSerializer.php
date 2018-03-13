@@ -53,6 +53,10 @@ abstract class BaseStateSerializer implements StateSerializerInterface
      */
     protected function denormalize(array $data)
     {
+        if (array_diff(array_values($this->getFields()), array_keys($data))) {
+            throw new \RuntimeException('Malformed state data');
+        }
+
         $state = new State();
 
         foreach ($this->getFields() as $objectField => $dataField) {

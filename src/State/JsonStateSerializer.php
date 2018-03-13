@@ -19,7 +19,7 @@ class JsonStateSerializer extends BaseStateSerializer
     {
         $data = @json_decode($string, true);
 
-        if (!is_array($data) || array_diff(array_keys($data), array_values($this->getFields()))) {
+        if (!is_array($data)) {
             throw new \RuntimeException('Malformed state data');
         }
 

@@ -70,10 +70,14 @@ class StateReaderWriter
     public function read()
     {
         fseek($this->handle, 0);
-        $content = stream_get_contents($this->handle, self::MAX_ALLOWED_STATE_FILE_SIZE);
+        $content = stream_get_contents($this->handle, self::MAX_ALLOWED_STATE_FILE_SIZE + 1);
 
         if ($content === false) {
             throw new \RuntimeException(sprintf("Unable to read state file '%s'.", $this->file));
+        }
+
+        if (strlen($content) > self::MAX_ALLOWED_STATE_FILE_SIZE) {
+            throw new \RuntimeException(sprintf("State file '%s' exceeded size limit of %d.", $this->file, self::MAX_ALLOWED_STATE_FILE_SIZE));
         }
 
         if ($content === '') {

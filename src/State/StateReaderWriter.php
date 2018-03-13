@@ -17,11 +17,17 @@ class StateReaderWriter
     private $handle;
 
     /**
+     * @var StateSerializerInterface
+     */
+    private $serializer;
+
+    /**
+     * @param StateSerializerInterface $serializer
      * @param string $logFile
      * @param string $dir
      * @param string|null $stateId
      */
-    public function __construct($logFile, $dir, $stateId = null)
+    public function __construct(StateSerializerInterface $serializer, $logFile, $dir, $stateId = null)
     {
         if (!is_dir($dir) && !@mkdir($dir) && !is_dir($dir)) {
             throw new \RuntimeException(sprintf("Unable to create '%s' directory.", $dir));
@@ -55,6 +61,7 @@ class StateReaderWriter
         }
 
         $this->handle = $handle;
+        $this->serializer = $serializer;
     }
 
     /**
@@ -73,10 +80,10 @@ class StateReaderWriter
             return null;
         }
 
-        $state = @unserialize($content);
-
-        if (!$state instanceof State) {
-            throw new \RuntimeException(sprintf("State file '%s' contains malformed data.", $this->file));
+        try {
+            $state = $this->serializer->deserialize($content);
+        } catch (\Exception $e) {
+            throw new \RuntimeException(sprintf("State file '%s' contains malformed data.", $this->file), 0, $e);
         }
 
         return $state;
@@ -89,7 +96,7 @@ class StateReaderWriter
     {
         ftruncate($this->handle, 0);
         fseek($this->handle, 0);
-        fwrite($this->handle, serialize($state));
+        fwrite($this->handle, $this->serializer->serialize($state));
         fflush($this->handle);
     }
 

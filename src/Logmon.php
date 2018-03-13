@@ -2,6 +2,7 @@
 
 namespace VisualCraft\Logmon;
 
+use VisualCraft\Logmon\State\JsonStateSerializer;
 use VisualCraft\Logmon\State\StateManager;
 use VisualCraft\Logmon\State\StateReaderWriter;
 
@@ -171,7 +172,7 @@ class Logmon
      */
     private function createStateReaderWriter()
     {
-        return new StateReaderWriter($this->logFile, $this->stateFilesDir, $this->stateId);
+        return new StateReaderWriter(new JsonStateSerializer(), $this->logFile, $this->stateFilesDir, $this->stateId);
     }
 
     /**

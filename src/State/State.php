@@ -2,7 +2,7 @@
 
 namespace VisualCraft\Logmon\State;
 
-class State implements \Serializable
+class State
 {
     public $offset;
     public $startSign;
@@ -11,36 +11,4 @@ class State implements \Serializable
     public $endSign;
     public $endSignOffset1;
     public $endSignOffset2;
-
-    /**
-     * {@inheritdoc}
-     */
-    public function serialize()
-    {
-        return serialize([
-            $this->offset,
-            $this->startSign,
-            $this->startSignOffset1,
-            $this->startSignOffset2,
-            $this->endSign,
-            $this->endSignOffset1,
-            $this->endSignOffset2,
-        ]);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function unserialize($serialized)
-    {
-        list(
-            $this->offset,
-            $this->startSign,
-            $this->startSignOffset1,
-            $this->startSignOffset2,
-            $this->endSign,
-            $this->endSignOffset1,
-            $this->endSignOffset2,
-        ) = unserialize($serialized);
-    }
 }

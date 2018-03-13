@@ -40,11 +40,11 @@ class LineFilterFactory
      */
     private function createSingle($definition)
     {
-        if (preg_match('#^(?<negation>!)?(?<regex>/.+/[a-z]*)$#', $definition, $m)) {
+        if (preg_match('#\A(?<negation>!)?(?<regex>/.+/[a-z]*)\z#ms', $definition, $m)) {
             return new RegexMatchLineFilter($m['regex'], $m['negation'] === '!');
         }
 
-        if (preg_match('#^s/(?<parts>.+)/(?<modifiers>[a-z]*)$#', $definition, $m)) {
+        if (preg_match('#\As/(?<parts>.+)/(?<modifiers>[a-z]*)\z#ms', $definition, $m)) {
             $separatorPosition = null;
 
             for ($index = 0, $limit = strlen($m['parts']); $index < $limit; $index++) {

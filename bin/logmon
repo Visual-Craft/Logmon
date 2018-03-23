@@ -64,7 +64,15 @@ function setupOptions()
             ,
         ])
         ->addOperands([
-            \GetOpt\Operand::create('input_file'),
+            \GetOpt\Operand::create('input_file', \GetOpt\Operand::MULTIPLE)
+                ->setValidation(function ($value) {
+                    if (!is_file($value)) {
+                        throw new RuntimeException(sprintf("Missing input file '%s'", $value));
+                    }
+
+                    return true;
+                })
+            ,
         ])
     ;
 
@@ -90,10 +98,17 @@ function parseOptions(\GetOpt\GetOpt $getOpt)
     if (!$getOpt->getOperand('input_file')) {
         throw new RuntimeException("Operand 'input_file' should be provided");
     }
+}
 
-    if (!is_file($getOpt->getOperand('input_file'))) {
-        throw new RuntimeException(sprintf("Missing input file '%s'", $getOpt->getOperand('input_file')));
+function createInput(array $paths)
+{
+    $input = new \VisualCraft\Logmon\Input\Input();
+
+    foreach ($paths as $path) {
+        $input->addItem(new \VisualCraft\Logmon\Input\InputItem($path));
     }
+
+    return $input;
 }
 
 function main()
@@ -124,15 +139,14 @@ function main()
     }
 
     $processor = new \VisualCraft\Logmon\Logmon(
-        $getOpt->getOperand('input_file'),
         $getOpt->getOption('dir'),
         $getOpt->getOption('state')
     );
 
     if ($getOpt->getOption('end')) {
-        $processor->skip();
+        $processor->skip(createInput($getOpt->getOperand('input_file')));
     } elseif ($getOpt->getOption('reset')) {
-        $processor->reset();
+        $processor->reset(createInput($getOpt->getOperand('input_file')));
     } else {
         $processOptions = [];
 
@@ -142,16 +156,16 @@ function main()
 
         if ($getOpt->getOption('filter')) {
             $lineFilterFactory = new \VisualCraft\Logmon\LineFilterFactory();
-            $processor->setFilter($lineFilterFactory->create($getOpt->getOption('filter')));
+            $processOptions['filter'] = $lineFilterFactory->create($getOpt->getOption('filter'));
         }
 
         if ($command = $getOpt->getOption('command')) {
-            $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ProcessStdinWritingLineProcessor($command);
+            $messageWriter = new \VisualCraft\Logmon\MessageWriter\ProcessStdinMessageWriter($command);
         } else {
-            $lineProcessor = new \VisualCraft\Logmon\LineProcessor\ResourceWritingLineProcessor(STDOUT);
+            $messageWriter = new \VisualCraft\Logmon\MessageWriter\ResourceMessageWriter(STDOUT);
         }
 
-        $processor->process($lineProcessor, $processOptions);
+        $processor->process(createInput($getOpt->getOperand('input_file')), $messageWriter, $processOptions);
     }
 
     return 0;

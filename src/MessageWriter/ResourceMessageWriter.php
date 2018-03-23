@@ -1,11 +1,14 @@
 <?php
 
-namespace VisualCraft\Logmon\LineProcessor;
+namespace VisualCraft\Logmon\MessageWriter;
 
-use VisualCraft\Logmon\LineProcessorInterface;
+use VisualCraft\Logmon\Message;
+use VisualCraft\Logmon\MessageWriterInterface;
 
-class ResourceWritingLineProcessor implements LineProcessorInterface
+class ResourceMessageWriter implements MessageWriterInterface
 {
+    use FileReportingMessageWriterTrait;
+
     /**
      * @var resource
      */
@@ -39,8 +42,8 @@ class ResourceWritingLineProcessor implements LineProcessorInterface
     /**
      * {@inheritdoc}
      */
-    public function process($line)
+    public function write(Message $message)
     {
-        fwrite($this->resource, $line);
+        fwrite($this->resource, $this->buildContent($message));
     }
 }

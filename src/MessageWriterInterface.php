@@ -2,13 +2,13 @@
 
 namespace VisualCraft\Logmon;
 
-interface LineProcessorInterface
+interface MessageWriterInterface
 {
     public function start();
     public function stop();
 
     /**
-     * @param string $line
+     * @param Message $message
      */
-    public function process($line);
+    public function write(Message $message);
 }

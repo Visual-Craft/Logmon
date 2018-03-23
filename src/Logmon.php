@@ -2,6 +2,7 @@
 
 namespace VisualCraft\Logmon;
 
+use VisualCraft\Logmon\Input\Input;
 use VisualCraft\Logmon\State\JsonStateSerializer;
 use VisualCraft\Logmon\State\StateManager;
 use VisualCraft\Logmon\State\StateReaderWriter;
@@ -11,17 +12,7 @@ class Logmon
     /**
      * @var string
      */
-    private $logFile;
-
-    /**
-     * @var string
-     */
     private $stateFilesDir;
-
-    /**
-     * @var LineFilterInterface|null
-     */
-    private $filter;
 
     /**
      * @var string|null
@@ -34,111 +25,109 @@ class Logmon
     private $handles;
 
     /**
-     * @param string $logFile
      * @param string $stateFilesDir
      * @param string|null $stateId
      */
-    public function __construct($logFile, $stateFilesDir, $stateId = null)
+    public function __construct($stateFilesDir, $stateId = null)
     {
-        $logFileRealPath = realpath($logFile);
-
-        if ($logFileRealPath === false) {
-            throw new \InvalidArgumentException("Argument 'logFile' should be the path to existing file");
-        }
-
-        $this->logFile = $logFileRealPath;
         $this->stateFilesDir = $stateFilesDir;
         $this->stateId = $stateId;
         $this->handles = [];
     }
 
     /**
-     * @param LineFilterInterface $value
-     */
-    public function setFilter(LineFilterInterface $value)
-    {
-        $this->filter = $value;
-    }
-
-    /**
-     * @param LineProcessorInterface $lineProcessor
+     * @param Input $input
+     * @param MessageWriterInterface $messageWriter
      * @param array $options
      */
-    public function process(LineProcessorInterface $lineProcessor, array $options = [])
+    public function process(Input $input, MessageWriterInterface $messageWriter, array $options = [])
     {
-        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) use ($lineProcessor, $options) {
-            $options = array_replace([
-                'maxLines' => 100,
-                'restart' => false,
-                'restartOnWrongSign' => true,
-            ], $options);
-            $options['maxLines'] = (int) $options['maxLines'];
+        $options = array_replace([
+            'maxLines' => 100,
+            'restart' => false,
+            'restartOnWrongSign' => true,
+            'filter' => null,
+        ], $options);
+        $options['maxLines'] = (int) $options['maxLines'];
 
-            $linesCount = 0;
-            $initialOffset = 0;
-            $stateManager = $this->createStateManager();
-            $logFileHandle = $this->openFile($this->logFile);
+        if ($options['filter'] && !$options['filter'] instanceof LineFilterInterface) {
+            throw new \InvalidArgumentException(sprintf("Value of options['filter'] should be instance of %s or null", LineFilterInterface::class));
+        }
 
-            if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
-                if ($stateManager->isValid($logFileHandle, $prevState)) {
-                    $initialOffset = $prevState->offset;
-                } elseif (!$options['restartOnWrongSign']) {
-                    throw new \RuntimeException('invalid log file sign');
+        foreach ($input->getItems() as $item) {
+            $this->openStateAndRun($item->getPath(), function ($path, StateReaderWriter $stateReaderWriter) use ($messageWriter, $options) {
+                $linesCount = 0;
+                $initialOffset = 0;
+                $stateManager = $this->createStateManager();
+                $logFileHandle = $this->openFile($path);
+                /** @var LineFilterInterface|null $filter */
+                $filter = $options['filter'];
+
+                if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
+                    if ($stateManager->isValid($logFileHandle, $prevState)) {
+                        $initialOffset = $prevState->offset;
+                    } elseif (!$options['restartOnWrongSign']) {
+                        throw new \RuntimeException('invalid log file sign');
+                    }
                 }
-            }
 
-            fseek($logFileHandle, $initialOffset);
-            $lineProcessorStarted = false;
+                fseek($logFileHandle, $initialOffset);
+                $messageWriterStarted = false;
 
-            while ($line = fgets($logFileHandle)) {
-                if ($this->filter) {
-                    $filteredLine = $this->filter->filter($line);
+                while ($line = fgets($logFileHandle)) {
+                    if ($filter) {
+                        $filteredLine = $filter->filter($line);
 
-                    if ($filteredLine === null || $filteredLine === '') {
-                        continue;
+                        if ($filteredLine === null || $filteredLine === '') {
+                            continue;
+                        }
+
+                        $line = $filteredLine;
                     }
 
-                    $line = $filteredLine;
+                    $linesCount++;
+
+                    if (!$messageWriterStarted) {
+                        $messageWriter->start();
+                        $messageWriterStarted = true;
+                    }
+
+                    $messageWriter->write(new Message($line, $path));
+
+                    if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
+                        break;
+                    }
                 }
 
-                $linesCount++;
-
-                if (!$lineProcessorStarted) {
-                    $lineProcessor->start();
-                    $lineProcessorStarted = true;
+                if ($messageWriterStarted) {
+                    $messageWriter->stop();
                 }
 
-                $lineProcessor->process($line);
-
-                if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
-                    break;
-                }
-            }
-
-            if ($lineProcessorStarted) {
-                $lineProcessor->stop();
-            }
-
-            $state = $stateManager->create($logFileHandle);
-            $stateReaderWriter->write($state);
-        });
+                $state = $stateManager->create($logFileHandle);
+                $stateReaderWriter->write($state);
+            });
+        }
     }
 
-    public function skip()
+    public function skip(Input $input)
     {
-        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) {
-            $logFileHandle = $this->openFile($this->logFile);
-            fseek($logFileHandle, 0, SEEK_END);
-            $state = $this->createStateManager()->create($logFileHandle);
-            $stateReaderWriter->write($state);
-        });
+        foreach ($input->getItems() as $item) {
+            $this->openStateAndRun($item->getPath(), function ($path, StateReaderWriter $stateReaderWriter) {
+                $logFileHandle = $this->openFile($path);
+                fseek($logFileHandle, 0, SEEK_END);
+                $state = $this->createStateManager()->create($logFileHandle);
+                $stateReaderWriter->write($state);
+            });
+        }
     }
 
-    public function reset()
+    public function reset(Input $input)
     {
-        $this->openStateAndRun(function (StateReaderWriter $stateReaderWriter) {
-            $stateReaderWriter->remove();
-        });
+        foreach ($input->getItems() as $item) {
+            $this->openStateAndRun($item->getPath(), function ($path, StateReaderWriter $stateReaderWriter) {
+                $stateReaderWriter->remove();
+            });
+        }
     }
 
     /**
@@ -168,11 +157,12 @@ class Logmon
     }
 
     /**
+     * @param string $path
      * @return StateReaderWriter
      */
-    private function createStateReaderWriter()
+    private function createStateReaderWriter($path)
     {
-        return new StateReaderWriter(new JsonStateSerializer(), $this->logFile, $this->stateFilesDir, $this->stateId);
+        return new StateReaderWriter(new JsonStateSerializer(), $path, $this->stateFilesDir, $this->stateId);
     }
 
     /**
@@ -184,14 +174,15 @@ class Logmon
     }
 
     /**
+     * @param string $path
      * @param callable $callable
      */
-    private function openStateAndRun(callable $callable)
+    private function openStateAndRun($path, callable $callable)
     {
-        $stateReaderWriter = $this->createStateReaderWriter();
+        $stateReaderWriter = $this->createStateReaderWriter($path);
 
         try {
-            $callable($stateReaderWriter);
+            $callable($path, $stateReaderWriter);
         } finally {
             $this->closeHandles();
             $stateReaderWriter->close();

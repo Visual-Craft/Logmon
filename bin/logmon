@@ -19,7 +19,7 @@ function setupOptions()
 {
     $defaultOptions = [
         'statesDir' => getcwd(),
-        'maxLines' => 100,
+        'maxMessagesPerInput' => 0,
     ];
 
     if (is_readable($defaultOptionsFile = __DIR__ . '/../default-options.php')) {
@@ -40,8 +40,8 @@ function setupOptions()
                 ->setDescription('Resets remembered position for input file, next regular run will start from beginning')
             ,
             \GetOpt\Option::create('m', 'max', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
-                ->setDescription('Sets max messages after which parsing stops (default 100)')
-                ->setDefaultValue($defaultOptions['maxLines'])
+                ->setDescription('Sets max messages per input after which parsing stops (default unlimited)')
+                ->setDefaultValue($defaultOptions['maxMessagesPerInput'])
             ,
             \GetOpt\Option::create('d', 'dir', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
                 ->setDescription('Sets directory which is used for storing state files')
@@ -151,7 +151,7 @@ function main()
         $processOptions = [];
 
         if ($getOpt->getOption('m')) {
-            $processOptions['maxLines'] = $getOpt->getOption('m');
+            $processOptions['maxMessagesPerInput'] = $getOpt->getOption('m');
         }
 
         if ($getOpt->getOption('filter')) {

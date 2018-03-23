@@ -43,12 +43,12 @@ class Logmon
     public function process(Input $input, MessageWriterInterface $messageWriter, array $options = [])
     {
         $options = array_replace([
-            'maxLines' => 100,
+            'maxMessagesPerInput' => 0,
             'restart' => false,
             'restartOnWrongSign' => true,
             'filter' => null,
         ], $options);
-        $options['maxLines'] = (int) $options['maxLines'];
+        $options['maxMessagesPerInput'] = (int) $options['maxMessagesPerInput'];
 
         if ($options['filter'] && !$options['filter'] instanceof LineFilterInterface) {
             throw new \InvalidArgumentException(sprintf("Value of options['filter'] should be instance of %s or null", LineFilterInterface::class));
@@ -94,7 +94,7 @@ class Logmon
 
                     $messageWriter->write(new Message($line, $path));
 
-                    if ($options['maxLines'] > 0 && $linesCount >= $options['maxLines']) {
+                    if ($options['maxMessagesPerInput'] > 0 && $linesCount >= $options['maxMessagesPerInput']) {
                         break;
                     }
                 }

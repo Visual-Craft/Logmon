@@ -2,5 +2,5 @@
 
 return [
     'statesDir' => getcwd(),
-    'maxLines' => 100,
+    'maxMessagesPerInput' => 0,
 ];

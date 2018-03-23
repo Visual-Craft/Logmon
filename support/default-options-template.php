@@ -23,5 +23,5 @@ return [
 
         return getcwd();
     }),
-    'maxLines' => 100,
+    'maxMessagesPerInput' => 0,
 ];

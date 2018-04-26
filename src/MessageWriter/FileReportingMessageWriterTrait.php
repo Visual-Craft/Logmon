@@ -11,15 +11,15 @@ trait FileReportingMessageWriterTrait
     private function buildContent(Message $message)
     {
         if ($this->lastFile === null) {
-            $prefix = $message->file . ":\n";
+            $prefix = "{$message->file}:\n";
         } elseif ($this->lastFile !== $message->file) {
-            $prefix = "\n\n" . $message->file . ":\n";
+            $prefix = "\n{$message->file}:\n";
         } else {
             $prefix = '';
         }
 
         $this->lastFile = $message->file;
 
-        return $prefix . $message->content;
+        return "{$prefix}{$message->content}\n";
     }
 }

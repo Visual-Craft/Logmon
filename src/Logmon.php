@@ -47,6 +47,7 @@ class Logmon
             'restart' => false,
             'restartOnWrongSign' => true,
             'filter' => null,
+            'noMultiline' => false,
         ], $options);
         $options['maxMessagesPerInput'] = (int) $options['maxMessagesPerInput'];
 
@@ -54,14 +55,13 @@ class Logmon
             throw new \InvalidArgumentException(sprintf("Value of options['filter'] should be instance of %s or null", LineFilterInterface::class));
         }
 
+        $writerStarted = false;
+
         foreach ($input->getItems() as $item) {
-            $this->openStateAndRun($item->getPath(), function ($path, StateReaderWriter $stateReaderWriter) use ($messageWriter, $options) {
-                $linesCount = 0;
+            $this->openStateAndRun($item->getPath(), function ($path, StateReaderWriter $stateReaderWriter) use (&$writerStarted, $messageWriter, $options) {
                 $initialOffset = 0;
                 $stateManager = $this->createStateManager();
                 $logFileHandle = $this->openFile($path);
-                /** @var LineFilterInterface|null $filter */
-                $filter = $options['filter'];
 
                 if (!$options['restart'] && ($prevState = $stateReaderWriter->read()) !== null) {
                     if ($stateManager->isValid($logFileHandle, $prevState)) {
@@ -72,40 +72,37 @@ class Logmon
                 }
 
                 fseek($logFileHandle, $initialOffset);
-                $messageWriterStarted = false;
+                $messageReader = new MessageReader(
+                    $logFileHandle,
+                    $options['maxMessagesPerInput'] > 0 ? $options['maxMessagesPerInput'] : null,
+                    !$options['noMultiline']
+                );
 
-                while ($line = fgets($logFileHandle)) {
-                    if ($filter) {
-                        $filteredLine = $filter->filter($line);
+                while (($message = $messageReader->read()) !== null) {
+                    if ($options['filter']) {
+                        $filteredMessage = $options['filter']->filter($message);
 
-                        if ($filteredLine === null || $filteredLine === '') {
+                        if ($filteredMessage === null || $filteredMessage === '') {
                             continue;
                         }
 
-                        $line = $filteredLine;
+                        $message = $filteredMessage;
                     }
 
-                    $linesCount++;
-
-                    if (!$messageWriterStarted) {
+                    if (!$writerStarted) {
                         $messageWriter->start();
-                        $messageWriterStarted = true;
                     }
 
-                    $messageWriter->write(new Message($line, $path));
-
-                    if ($options['maxMessagesPerInput'] > 0 && $linesCount >= $options['maxMessagesPerInput']) {
-                        break;
-                    }
-                }
-
-                if ($messageWriterStarted) {
-                    $messageWriter->stop();
+                    $messageWriter->write(new Message($message, $path));
                 }
 
                 $state = $stateManager->create($logFileHandle);
                 $stateReaderWriter->write($state);
             });
+        }
+
+        if ($writerStarted) {
+            $messageWriter->stop();
         }
     }
 

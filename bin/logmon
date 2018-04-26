@@ -56,6 +56,9 @@ function setupOptions()
             \GetOpt\Option::create('c', 'command', \GetOpt\GetOpt::REQUIRED_ARGUMENT)
                 ->setDescription('Path to external command which will be run, lines will be fed to it via stdin')
             ,
+            \GetOpt\Option::create(null, 'no-multiline')
+                ->setDescription('Disable multiline message mode')
+            ,
             \GetOpt\Option::create('h', 'help')
                 ->setDescription('Show help')
             ,
@@ -157,6 +160,10 @@ function main()
         if ($getOpt->getOption('filter')) {
             $lineFilterFactory = new \VisualCraft\Logmon\LineFilterFactory();
             $processOptions['filter'] = $lineFilterFactory->create($getOpt->getOption('filter'));
+        }
+
+        if ($getOpt->getOption('no-multiline')) {
+            $processOptions['noMultiline'] = true;
         }
 
         if ($command = $getOpt->getOption('command')) {

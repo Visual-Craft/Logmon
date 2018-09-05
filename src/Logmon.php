@@ -91,6 +91,7 @@ class Logmon
 
                     if (!$writerStarted) {
                         $messageWriter->start();
+                        $writerStarted = true;
                     }
 
                     $messageWriter->write(new Message($message, $path));
